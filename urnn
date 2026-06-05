@@ -1,15 +1,14 @@
 #!/bin/sh
 # wrapper script for urnn scripts and functions
 
-# planned:
 usage()
 {
-  echo "usage: $0 [retrain|regen|refresh|colors] (file) (file)"
+  echo "usage: $0 [retrain|regen|refresh|colors|colors.sh] (file) (file)"
   echo "       retrain               retrain urnn with the current dataset"
-  # This will eventually have a (convert/colors) arg, for now using colors only.
   echo "       regen                 regenerate ALL urnn data from inputs (HEAVY operation)"
   echo "       refresh               repopulate urnn.data file from dataset(after an add, for example)"
   echo "       colors (img)          generate xresources to STDOUT using current training result"
+  echo "       colors.sh (img)       generate shell variables to STDOUT using current training result"
   echo "       add (img) (Xres)      generate and add urnn data to current dataset(for quickly testing)"
   echo "       addinput (img) (Xres) generate and add urnn data to dataset, and add files to input/staging"
   exit 1
@@ -36,9 +35,10 @@ regen()
   rm dataset/*.data
 
   # Make new dataset from input/data.
-  cd scripts
-  ./extracter.pl
-  cd ..
+  echo "Warning: extracter script needs porting to awk if still in use."
+  # cd scripts
+  # ./extracter.pl
+  # cd ..
 
   # repopulate urnn.data
   refresh
@@ -48,42 +48,61 @@ refresh()
 {
   cd network
 
-  # at top of urnn.data, we have:
-  # <sets> <input nodes> <output nodes>
-  # We're using top 10 colors from images, with 3 nodes for every color = 30
-  # There are 18 Xresources colors (times 3 for color nodes) = 54 output nodes
-  # and a set is a pair of image.data and resource data.
   sets=`find ../dataset/ -name "*.images.data" | wc -l`
   echo "$sets 30 54" > urnn.data
-  for file in `ls ../dataset | sort`; do
+  for file in $(ls ../dataset | sort); do
     (cat ../dataset/$file; echo) >> urnn.data
   done
 }
 
-colors()
+colors_common()
 {
   file="$1"
   [ -z "$file" ] && usage
   [ ! -f "$file" ] && echo "ERR: could not find $file" && exit 1
 
-  # Is this a png file?
-  if ! file "$file" | grep "PNG image data" > /dev/null; then
-    type convert >/dev/null 2>&1 || { echo >&2 "File was not png. Unable to convert image to png file without imagemagick package."; exit 1; }
-    convert "$file" "/tmp/urnn.png"
-    file="/tmp/urnn.png"
+  store="$(mktemp)"
+
+  if [ ! -f "network/urnn.trained" ] || ! head -n 1 "network/urnn.trained" | grep -q "genann"; then
+    echo "Warning: Old or missing network weights detected." >&2
+    echo "Please run \`urnn retrain\` to train the network since you upgraded to genann and weights have changed." >&2
   fi
 
-  store="$(mktemp)"
-  #TODO - make sure there are 10 colors
-  cd scripts
-  ./fix_colors.pl $(../colors/sin_colors/colors -en 10 $file | xargs -n 10 ) | xargs -n1 | perl convert_hex_to_val_2.pl -s 1 > $store
-  cd ../
-  network/urnn_run network/urnn.trained $store | xargs -n3 | scripts/convert_val_to_xresources_colors_2.pl -s 1 -n
+  # Get colors using sin_colors, fix them, and convert to values
+  raw_colors=$(colors/sin_colors/colors -en 10 "$file" | xargs)
+  fixed_colors=$(awk -f scripts/fix_colors.awk $raw_colors)
+  echo $fixed_colors | xargs -n1 | awk -v ratio=1 -f scripts/convert_hex_to_val.awk > "$store"
+
+  # Network output
+  raw_vals=$(network/urnn_run network/urnn.trained "$store" 2>/dev/null)
+  rm "$store"
+  echo "$raw_vals"
 }
 
-# Add inputs to the dataset folder
-# add (image file) (xresources file)
-# extracts colors from png and xresources and adds to the dataset folder.
+colors()
+{
+  raw_vals=$(colors_common "$1")
+  echo "$raw_vals" | xargs -n3 | awk -v ratio=1 -v show_name=1 -f scripts/convert_val_to_xresources_colors.awk
+}
+
+colors_sh()
+{
+  raw_vals=$(colors_common "$1")
+  echo "$raw_vals" | xargs -n3 | awk -v ratio=1 -f scripts/convert_val_to_xresources_colors.awk > /tmp/urnn_raw_colors
+
+  bg=$(sed -n '1p' /tmp/urnn_raw_colors)
+  fg=$(sed -n '2p' /tmp/urnn_raw_colors)
+  echo "URNN_BACKGROUND=\"$bg\""
+  echo "URNN_FOREGROUND=\"$fg\""
+
+  idx=0
+  sed '1,2d' /tmp/urnn_raw_colors | while read -r col; do
+    echo "URNN_COLOR${idx}=\"$col\""
+    idx=$((idx+1))
+  done
+  rm /tmp/urnn_raw_colors
+}
+
 add()
 {
   image_file="$file_rel/$1"
@@ -92,33 +111,19 @@ add()
   [ -z "$xres_file" ] && usage
   [ ! -f "$image_file" ] && echo "ERR: could not find $image_file" && exit 1
 
-  # Is this a png image_file?
-  if ! file "$image_file" | grep "PNG image data"; then
-    type convert >/dev/null 2>&1 || { echo >&2 "image_file was not png. Unable to convert image to png image_file without imagemagick package."; exit 1; }
-    convert "$image_file" "/tmp/urnn.png"
-    image_file="/tmp/urnn.png"
-  fi
+  filename="${USER}_$(date +%s)"
 
-  # pick a unique-ish name for the files we're making.
-  filename="$USER_`date +%N`"
-
-  cd scripts
   # Xresources
-  ./extract_hex_from_xresources.pl "$xres_file" | ./convert_hex_to_val_2.pl -s 1 > ../dataset/${filename}.resources.data
-  #TODO - make sure there are 10 colors
-  ./fix_colors.pl $(../colors/sin_colors/colors -en 10 "$image_file" | xargs -n 10 ) | xargs -n1 | ./convert_hex_to_val_2.pl -s 1 > ../dataset/${filename}.images.data
-  cd ../
+  awk -f scripts/extract_hex_from_xresources.awk "$xres_file" | awk -v ratio=1 -f scripts/convert_hex_to_val.awk > "dataset/${filename}.resources.data"
 
-  cd ..
+  raw_colors=$(colors/sin_colors/colors -en 10 "$image_file" | xargs)
+  fixed_colors=$(awk -f scripts/fix_colors.awk $raw_colors)
+  echo $fixed_colors | xargs -n1 | awk -v ratio=1 -f scripts/convert_hex_to_val.awk > "dataset/${filename}.images.data"
 }
 
-# Add inputs to the dataset folder, and also move them to the input staging folder.
 addinput()
 {
-  # Get file locations and add them to the dataset folder
   add "$1" "$2"
-
-  # Copy the files to input/staging folder.
   cp "$image_file" "inputs/staging/${filename}.png"
   cp "$xres_file" "inputs/staging/${filename}.resources"
   echo "Generated by $USER" > "inputs/staging/${filename}.txt"
@@ -133,19 +138,20 @@ urnnputs()
   fi
 }
 
-# Make things relative to dir this script resides in
 file_rel=$(pwd)
 cd $(dirname $([ -L $0  ] && readlink -f $0 || echo $0))
 
 setup
 if [ $? -ne 0 ]; then
-  echo "Compilation failed. Do you have libfann and libpng installed?"
+  echo "Compilation failed."
   exit 1
 fi
 
 case $1 in
   retrain|refresh|regen|colors|add|addinput)
     $@ || usage;;
+  colors.sh)
+    colors_sh "$2" || usage;;
   *)
     usage;;
 esac

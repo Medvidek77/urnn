@@ -1,12 +1,11 @@
 VERSION = 0.3
 
-PREFIX = /usr/local
+PREFIX ?= /usr/local
 MANPREFIX = $(PREFIX)/man
 
-CPPFLAGS = -I/usr/local/include
-CFLAGS = -Wall -O3
-LDFLAGS = -L/usr/local/lib -lpng
-OBJ = colors.o png.o
+CFLAGS ?= -Wall -O3
+LDFLAGS ?= -lm
+OBJ = colors.o img.o
 BIN = colors
 
 all: $(BIN)
@@ -15,7 +14,7 @@ $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(OBJ) $(LDFLAGS)
 
 colors.o: arg.h colors.h tree.h
-png.o: colors.h
+img.o: colors.h stb_image.h
 
 install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/bin

@@ -1,9 +1,15 @@
-CC=cc
-CFLAGS=-std=c99
-LIBS=-lfann -lm
-TARGETS:=urnn_train urnn_run urnn_train_reverse urnn_run_reverse
+CC ?= cc
+CFLAGS ?= -std=c99 -Wall -O3
+LIBS = -lm
+TARGETS = urnn_train urnn_run
 
-all:
-	@for target in $(TARGETS); do \
-		$(CC) $$target.c -o $$target $(LIBS) $(CFLAGS); \
-	done
+all: $(TARGETS)
+
+urnn_train: urnn_train.c genann.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+urnn_run: urnn_run.c genann.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+clean:
+	rm -f $(TARGETS)
