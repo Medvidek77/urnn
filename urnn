@@ -35,9 +35,21 @@ regen()
   rm dataset/*.data
 
   # Make new dataset from input/data.
+  # In original code, regen requires 'extracter.pl' which pulls data from
+  # submodule 'inputs' and builds the dataset locally.
+  # Since we've removed the Perl script and the base dataset is part of the repo,
+  # 'regen' without explicit access to 'inputs/data' would just delete the local dataset.
+  # We block 'regen' if the inputs source doesn't exist, to prevent breaking
+  # local setups without an internet connection to the input submodule.
+  if [ ! -d inputs/data ]; then
+    echo "Regen requires inputs/data submodule which is not present or configured."
+    echo "Skipping regeneration to preserve existing dataset."
+    return 1
+  fi
+
   echo "Warning: extracter script needs porting to awk if still in use."
   # cd scripts
-  # ./extracter.pl
+  # ./extracter.awk
   # cd ..
 
   # repopulate urnn.data
