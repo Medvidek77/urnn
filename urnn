@@ -75,7 +75,7 @@ colors_common()
 
   store="$(mktemp)"
 
-  if [ ! -f "network/urnn.trained" ] || ! head -n 1 "network/urnn.trained" | grep -q "genann"; then
+  if [ ! -f "network/urnn.trained" ]; then
     echo "Warning: Old or missing network weights detected." >&2
     echo "Please run \`urnn retrain\` to train the network since you upgraded to genann and weights have changed." >&2
   fi
