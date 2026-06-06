@@ -5,12 +5,13 @@
  * Usage ./urnn_run [trained file] [input file]
  * Run the network
  *
- * Compile with: cc urnn_run.c -o urnn_run -l fann -l m
+ * Compile with: cc urnn_run.c genann.c -o urnn_run -lm
  *
  */
 
 #include <stdio.h>
-#include "floatfann.h"
+#include <stdlib.h>
+#include "genann.h"
 
 
 void
@@ -18,7 +19,6 @@ HELP(char* argv[])
 {
 	printf("Usage %s \t [trained file] [input file]\nRun the network.\n", argv[0]);
 }
-
 
 void
 read_float_from_file(char* input, double from_file[])
@@ -33,10 +33,11 @@ read_float_from_file(char* input, double from_file[])
 		exit(1);
 	}
 
-	for (int i = 0; i <  30; i++) {
-		fscanf(my_file,"%lf",&input_data);
-		from_file[index] = input_data;
-		index++;
+	for (int i = 0; i < 30; i++) {
+		if (fscanf(my_file,"%lf",&input_data) == 1) {
+			from_file[index] = input_data;
+			index++;
+		}
 	}
 	fclose(my_file);
 	if (index != 30) {
@@ -44,32 +45,41 @@ read_float_from_file(char* input, double from_file[])
 	}
 }
 
-
 int
 main(int argc, char* argv[])
 {
 	if (argc != 3) {
 		HELP(argv);
+		return 1;
 	}
-	else {
-		fann_type *calc_out;
-		fann_type input[30];
-		double from_file[30];
 
-		struct fann *ann = fann_create_from_file(argv[1]);
-		read_float_from_file(argv[2], from_file);
-
-		for (int i = 0; i < 30; i++) {
-			input[i] = from_file[i];
-		}
-
-		calc_out = fann_run(ann, input);
-
-		for (int i = 0; i < 54; i++) {
-			printf("%.15f ", calc_out[i]);
-		}
-
-		fann_destroy(ann);
+	FILE *ann_file = fopen(argv[1], "r");
+	if (!ann_file) {
+		printf("Error opening trained network file.\n");
+		return 1;
 	}
+
+	genann *ann = genann_read(ann_file);
+	fclose(ann_file);
+	if (!ann) {
+		printf("Error reading trained network file.\n");
+		return 1;
+	}
+
+	double from_file[30];
+	read_float_from_file(argv[2], from_file);
+
+	for (int i = 0; i < 30; i++) {
+		from_file[i] = (from_file[i] + 1.0) / 2.0;
+	}
+
+	const double *calc_out = genann_run(ann, from_file);
+
+	for (int i = 0; i < 54; i++) {
+		double rescaled = (calc_out[i] * 2.0) - 1.0;
+		printf("%.15f ", rescaled);
+	}
+
+	genann_free(ann);
 	return 0;
 }
