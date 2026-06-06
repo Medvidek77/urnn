@@ -69,10 +69,15 @@ main(int argc, char* argv[])
 	double from_file[30];
 	read_float_from_file(argv[2], from_file);
 
+	for (int i = 0; i < 30; i++) {
+		from_file[i] = (from_file[i] + 1.0) / 2.0;
+	}
+
 	const double *calc_out = genann_run(ann, from_file);
 
 	for (int i = 0; i < 54; i++) {
-		printf("%.15f ", calc_out[i]);
+		double rescaled = (calc_out[i] * 2.0) - 1.0;
+		printf("%.15f ", rescaled);
 	}
 
 	genann_free(ann);

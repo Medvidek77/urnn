@@ -70,6 +70,16 @@ main(int argc, char* argv[])
 	const int epochs_between_reports = 20000;
 	const double learning_rate = 0.1; // genann default
 
+	// Rescale datasets to [0, 1] for genann default sigmoid. Original dataset values map to [-1, 1].
+	for (int i = 0; i < num_sets; i++) {
+		for (int j = 0; j < num_input; j++) {
+			input[i][j] = (input[i][j] + 1.0) / 2.0;
+		}
+		for (int j = 0; j < num_output; j++) {
+			output[i][j] = (output[i][j] + 1.0) / 2.0;
+		}
+	}
+
 	genann *ann = genann_init(num_input, hidden_layers, hidden_neurons, num_output);
 
 	for (int i = 0; i < max_epochs; i++) {
