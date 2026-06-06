@@ -81,7 +81,12 @@ colors_common()
   fi
 
   # Get colors using sin_colors, fix them, and convert to values
-  raw_colors=$(colors/sin_colors/colors -en 10 "$file" | xargs)
+  raw_colors=$(colors/sin_colors/colors -en 10 "$file" 2>/dev/null | xargs)
+  if [ -z "$raw_colors" ]; then
+    echo "ERR: could not parse colors from $file. Is it a valid image?" >&2
+    rm "$store"
+    exit 1
+  fi
   fixed_colors=$(awk -f scripts/fix_colors.awk $raw_colors)
   echo $fixed_colors | xargs -n1 | awk -v ratio=1 -f scripts/convert_hex_to_val.awk > "$store"
 
@@ -94,12 +99,14 @@ colors_common()
 colors()
 {
   raw_vals=$(colors_common "$1")
+  [ $? -ne 0 ] && return 1
   echo "$raw_vals" | xargs -n3 | awk -v ratio=1 -v show_name=1 -f scripts/convert_val_to_xresources_colors.awk
 }
 
 colors_sh()
 {
   raw_vals=$(colors_common "$1")
+  [ $? -ne 0 ] && return 1
   echo "$raw_vals" | xargs -n3 | awk -v ratio=1 -f scripts/convert_val_to_xresources_colors.awk > /tmp/urnn_raw_colors
 
   bg=$(sed -n '1p' /tmp/urnn_raw_colors)
